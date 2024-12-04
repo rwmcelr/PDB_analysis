@@ -4,6 +4,7 @@ from Bio.PDB.PDBParser import PDBParser
 from scipy.spatial import KDTree
 import matplotlib.pyplot as plt
 import seaborn as sns
+import csv
 import os
 
 def find_contacts(pdb_file, chain1, chain2, dist_cutoff=4.0):
@@ -51,7 +52,12 @@ def compile_interactions_parallel(project_dir, chain1, chain2, dist_cutoff=4.0):
     for result, file_info in zip(results, pdb_files):
         pdb_file, chain1, chain2, _ = file_info
         dirname = os.path.basename(os.path.dirname(pdb_file))
-        interaction_data[dirname].extend(result)
+        for res1, res2 in result:
+            interaction_data[dirname].append({
+                "pdb_file": os.path.basename(pdb_file),
+                "residue1": res1,
+                "residue2": res2
+            })
 
     return interaction_data
 
@@ -77,6 +83,7 @@ def compile_interactions(project_dir, chain1, chain2, dist_cutoff=4.0):
 
 def analyze_interactions(interaction_data):
     residue_counter = defaultdict(Counter)
+    combined_counter = Counter()
 
     for condition, contacts in interaction_data.items():
         for contact in contacts:
@@ -86,34 +93,99 @@ def analyze_interactions(interaction_data):
             res2_name = f"{res2.get_resname()} {res2.get_id()[1]}"
             residue_counter[condition][res1_name] += 1
             residue_counter[condition][res2_name] += 1
+            combined_counter[res1_name] += 1
+            combined_counter[res2_name] += 1
 
-    return residue_counter
+    return residue_counter, combined_counter
 
-def plot_histograms(residue_counter, output_dir="."):
+def plot_histograms(residue_counter, combined_counter, top_n):
     for condition, counter in residue_counter.items():
+        top_residues = counter.most_common(top_n)
+        residues, counts = zip(*top_residues)
+
         plt.figure(figsize=(10, 6))
-        sns.barplot(x=list(counter.values()), y=list(counter.keys()), orient='h')
-        plt.title(f"Residue Interaction Frequency - {condition}")
+        sns.barplot(x=counts, y=residues, orient='h')
+        plt.title(f"Top {top_n} Residues - {condition}")
         plt.xlabel("Interaction Count")
         plt.ylabel("Residues")
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, f"{condition}_histogram.png"))
+        plt.savefig(f"{condition}_histogram.png")
         plt.close()
 
-def plot_bubble_chart(residue_counter, output_dir="."):
-    all_residues = Counter()
-    for counter in residue_counter.values():
-        all_residues.update(counter)
-
-    residues, counts = zip(*all_residues.items())
-    plt.figure(figsize=(12, 8))
-    sns.scatterplot(x=counts, y=residues, size=counts, legend=False, sizes=(20, 2000), alpha=0.7)
-    plt.title("Overall Residue Interaction Frequency")
+    # Combined histogram
+    top_residues = combined_counter.most_common(top_n)
+    residues, counts = zip(*top_residues)
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=counts, y=residues, orient='h')
+    plt.title(f"Top {top_n} Residues - Combined")
     plt.xlabel("Interaction Count")
     plt.ylabel("Residues")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "bubble_chart.png"))
+    plt.savefig("combined_histogram.png")
+    plt.close()
+
+def plot_bubble_charts(residue_counter, combined_counter, top_n):
+    for condition, counter in residue_counter.items():
+        top_residues = counter.most_common(top_n)
+        residues, counts = zip(*top_residues)
+        
+        plt.figure(figsize=(12, 8))
+        sns.scatterplot(x=counts, y=residues, size=counts, sizes=(20, 2000), alpha=0.7, legend=False)
+        plt.title(f"Top {top_n} Residues - {condition}")
+        plt.xlabel("Interaction Count")
+        plt.ylabel("Residues")
+        plt.tight_layout()
+        plt.savefig(f"{condition}_bubble_chart.png")
+        plt.close()
+
+    # Combined bubble chart
+    top_residues = combined_counter.most_common(top_n)
+    residues, counts = zip(*top_residues)
+    plt.figure(figsize=(12, 8))
+    sns.scatterplot(x=counts, y=residues, size=counts, sizes=(20, 2000), alpha=0.7, legend=False)
+    plt.title(f"Top {top_n} Residues - Combined")
+    plt.xlabel("Interaction Count")
+    plt.ylabel("Residues")
+    plt.tight_layout()
+    plt.savefig("combined_bubble_chart.png")
     plt.close()
 
 def point_to_results_dir(target_dir):
     os.chdir(target_dir)
+
+def save_interaction_data(interaction_data, output_dir, output_format="csv"):
+    delimiter = "," if output_format == "csv" else "\t"
+    output_file = os.path.join(output_dir, f"interaction_data.{output_format}")
+
+    with open(output_file, mode="w", newline="") as f:
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerow(["Condition", "PDB File", "Residue 1", "Residue 2"])
+        for condition, contacts in interaction_data.items():
+            for contact in contacts:
+                res1 = contact["residue1"]
+                res2 = contact["residue2"]
+                writer.writerow([
+                    condition,
+                    contact["pdb_file"],
+                    f"{res1.get_resname()} {res1.get_id()[1]}",
+                    f"{res2.get_resname()} {res2.get_id()[1]}"
+                ])
+
+def generate_summary_table(interaction_data, output_dir, output_format="csv"):
+    summary = defaultdict(Counter)
+    for condition, contacts in interaction_data.items():
+        for contact in contacts:
+            res1 = f"{contact['residue1'].get_resname()} {contact['residue1'].get_id()[1]}"
+            res2 = f"{contact['residue2'].get_resname()} {contact['residue2'].get_id()[1]}"
+            pair = f"{res1} - {res2}"
+            summary[condition][pair] += 1
+
+    output_file = os.path.join(output_dir, f"summary_table.{output_format}")
+    delimiter = "," if output_format == "csv" else "\t"
+
+    with open(output_file, mode="w", newline="") as f:
+        writer = csv.writer(f, delimiter=delimiter)
+        writer.writerow(["Condition", "Residue Pair", "Interaction Count"])
+        for condition, pairs in summary.items():
+            for pair, count in pairs.items():
+                writer.writerow([condition, pair, count])

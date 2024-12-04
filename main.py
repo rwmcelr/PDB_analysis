@@ -1,48 +1,56 @@
+import os
 import argparse
-from functions import *
+from functions import (
+    load_pdb_files,
+    compile_interactions_parallel,
+    analyze_interactions,
+    save_interaction_data,
+    generate_summary_table,
+    plot_histograms,
+    plot_bubble_charts,
+)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Analyze docking results for interacting residues.")
-    parser.add_argument("project_dir", type=str, help="Path to the directory containing docking results.")
-    parser.add_argument("--chain1", type=str, default="A", help="Chain 1 for contact analysis.")
-    parser.add_argument("--chain2", type=str, default="B", help="Chain 2 for contact analysis.")
-    parser.add_argument("--dist_cutoff", type=float, default=4.0, help="Distance cutoff for interactions.")
-    parser.add_argument("--output_dir", type=str, help="Path to the directory where results will be output.")
-    parser.add_argument("--parallel", action="store_true", help="Enable parallel processing.")
+    parser = argparse.ArgumentParser(description="Analyze PDB interactions.")
+    parser.add_argument("--input_dir", type=str, required=True, help="Directory containing PDB files.")
+    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save outputs.")
+    parser.add_argument("--top_n", type=int, default=10, help="Top N residues to display in plots.")
+    parser.add_argument("--output_format", type=str, choices=["csv", "tsv"], default="csv",
+                        help="Output format for interaction data and summary.")
+    parser.add_argument("--threads", type=int, default=4, help="Number of threads for parallel processing.")
     return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
 
-    # Compile interaction data
-    if args.parallel:
-        interaction_data = compile_interactions_parallel(
-            args.project_dir, args.chain1, args.chain2, args.dist_cutoff
-        )
-    else:
-        interaction_data = compile_interactions(
-            args.project_dir, args.chain1, args.chain2, args.dist_cutoff
-        )
+    # Ensure output directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Load PDB files
+    pdb_files = load_pdb_files(args.input_dir)
+    if not pdb_files:
+        print("No PDB files found in the specified directory.")
+        return
+
+    # Compile interactions
+    interaction_data = compile_interactions_parallel(pdb_files, args.threads)
 
     # Analyze interactions
-    residue_counter = analyze_interactions(interaction_data)
+    residue_counter, combined_counter = analyze_interactions(interaction_data)
 
-    # Save detailed interaction data
-    output_path = args.output_dir or "."
-    os.makedirs(output_path, exist_ok=True)
-    with open(os.path.join(output_path, "interaction_data.txt"), "w") as f:
-        for condition, contacts in interaction_data.items():
-            f.write(f"Condition: {condition}\n")
-            for contact in contacts:
-                res1 = contact["residue1"]
-                res2 = contact["residue2"]
-                pdb_file = contact["pdb_file"]
-                res1_name = f"{res1.get_resname()} {res1.get_id()[1]}"
-                res2_name = f"{res2.get_resname()} {res2.get_id()[1]}"
-                f.write(f"  {pdb_file}: {res1_name} - {res2_name}\n")
+    # Save interaction data
+    save_interaction_data(interaction_data, args.output_dir, args.output_format)
 
-    # Plot histograms for each condition
-    plot_histograms(residue_counter, output_path)
+    # Generate summary table
+    generate_summary_table(interaction_data, args.output_dir, args.output_format)
 
-    # Plot a bubble chart for overall interactions
-    plot_bubble_chart(residue_counter, output_path)
+    # Create histograms
+    plot_histograms(residue_counter, combined_counter, args.top_n)
+
+    # Create bubble charts
+    plot_bubble_charts(residue_counter, combined_counter, args.top_n)
+
+    print(f"Analysis complete. Results saved to: {args.output_dir}")
+
+if __name__ == "__main__":
+    main()
