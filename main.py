@@ -10,7 +10,11 @@ from analysis.processing import (
     compile_interactions_non_parallel
 )
 from analysis.analysis import analyze_interactions
-from analysis.visualization import plot_histograms, plot_bubble_charts
+from analysis.visualization import plot_histograms, plot_bubble_chart_radial
+from analysis.experimental import (
+    plot_interaction_heatmap,
+    plot_interaction_network
+)
 
 def parse_args():
     """Parse command-line arguments for the PDB interaction analysis pipeline."""
@@ -51,7 +55,11 @@ def main():
 
     # Generate visualizations
     plot_histograms(residue_counter, combined_counter, args.top_n, args.output_dir)
-    plot_bubble_charts(residue_counter, combined_counter, args.top_n, args.output_dir)
+    plot_bubble_chart_radial(residue_counter, combined_counter, args.top_n, args.output_dir)
+
+    # Experimental plots
+    plot_interaction_heatmap(interaction_data, args.output_dir)
+    plot_interaction_network(interaction_data, args.output_dir)
 
     print(f"Analysis complete. Results saved to: {args.output_dir}")
 
