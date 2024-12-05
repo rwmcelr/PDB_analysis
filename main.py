@@ -50,8 +50,8 @@ def main():
     generate_summary_table(interaction_data, args.output_dir, args.output_format)
 
     # Generate visualizations
-    plot_histograms(residue_counter, combined_counter, args.top_n)
-    plot_bubble_charts(residue_counter, combined_counter, args.top_n)
+    plot_histograms(residue_counter, combined_counter, args.top_n, args.output_dir)
+    plot_bubble_charts(residue_counter, combined_counter, args.top_n, args.output_dir)
 
     print(f"Analysis complete. Results saved to: {args.output_dir}")
 
